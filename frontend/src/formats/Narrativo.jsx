@@ -21,7 +21,7 @@ export default function Narrativo() {
       </Link>
 
       <div className="fixed top-6 right-6 z-10">
-        <PeriodSelector periodos={periodos} sel={sel} setSel={setSel} />
+        <PeriodSelector periodos={periodos} sel={sel} setSel={setSel} variant="dark" />
       </div>
 
       <section className="min-h-[70vh] flex flex-col justify-center items-center text-center px-6">

@@ -1,6 +1,12 @@
 import axios from "axios";
 
-const api = axios.create({ baseURL: "http://localhost:8000" });
+// Rutas relativas → mismo origen (Vite proxy /api → backend). Necesario con ngrok.
+const api = axios.create({
+  baseURL: import.meta.env.VITE_API_BASE_URL ?? "",
+  // ngrok free muestra una página de advertencia; este header la salta en las
+  // llamadas XHR (si no, la API recibiría HTML en vez de JSON).
+  headers: { "ngrok-skip-browser-warning": "true" },
+});
 
 api.interceptors.request.use((cfg) => {
   const t = localStorage.getItem("token");

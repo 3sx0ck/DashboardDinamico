@@ -1,4 +1,11 @@
-export default function PeriodSelector({ periodos = [], sel, setSel }) {
+const selectClass = {
+  light:
+    "p-2 rounded-lg border border-slate-200 bg-white text-slate-900 shadow-sm",
+  dark:
+    "p-2 rounded-lg border border-slate-600 bg-slate-800 text-white shadow-sm",
+};
+
+export default function PeriodSelector({ periodos = [], sel, setSel, variant = "light" }) {
   if (!periodos.length) return null;
 
   const mesActual = periodos.find((p) => p.periodo === sel?.periodo) || periodos[0];
@@ -16,10 +23,12 @@ export default function PeriodSelector({ periodos = [], sel, setSel }) {
     setSel(mesActual.periodo, uploadId);
   }
 
+  const selectCls = selectClass[variant] ?? selectClass.light;
+
   return (
     <div className="flex gap-3 flex-wrap">
       <select
-        className="p-2 rounded-lg bg-slate-100 dark:bg-slate-700 dark:text-white"
+        className={selectCls}
         value={mesActual?.periodo || ""}
         onChange={onMesChange}
       >
@@ -30,7 +39,7 @@ export default function PeriodSelector({ periodos = [], sel, setSel }) {
         ))}
       </select>
       <select
-        className="p-2 rounded-lg bg-slate-100 dark:bg-slate-700 dark:text-white"
+        className={selectCls}
         value={sel?.uploadId || ""}
         onChange={onSemanaChange}
       >

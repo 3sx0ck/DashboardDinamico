@@ -37,7 +37,7 @@ export default function Analitico() {
           </p>
         </div>
         <div className="mb-4">
-          <PeriodSelector periodos={periodos} sel={sel} setSel={setSel} />
+          <PeriodSelector periodos={periodos} sel={sel} setSel={setSel} variant="dark" />
         </div>
         <nav className="space-y-1 flex-1">
           {TABS.map((t) => (
