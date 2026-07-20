@@ -16,6 +16,7 @@ app.include_router(auth.router)
 app.include_router(users.router)
 app.include_router(uploads.router)
 app.include_router(dashboard.router)
+app.include_router(dashboard.periodos_router)
 
 @app.get("/api/health")
 def health():

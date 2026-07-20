@@ -20,11 +20,19 @@ _DOMAIN_MODELS = [
 ]
 
 
-def _clear_periodo(db: Session, periodo: str):
-    """Borra datos previos del periodo para que re-subir reemplace, no acumule."""
+def _clear_snapshot(db: Session, periodo: str, semana: str):
+    """Borra datos previos del mismo snapshot (periodo+semana) para que
+    re-subir la misma semana reemplace, pero una semana distinta acumule."""
+    upload_ids = [
+        row.id for row in db.query(models.Upload.id)
+        .filter(models.Upload.periodo == periodo, models.Upload.semana == semana)
+        .all()
+    ]
+    if not upload_ids:
+        return
     for M in _DOMAIN_MODELS:
-        db.query(M).filter(M.periodo == periodo).delete(synchronize_session=False)
-    db.query(models.Upload).filter(models.Upload.periodo == periodo).delete(synchronize_session=False)
+        db.query(M).filter(M.upload_id.in_(upload_ids)).delete(synchronize_session=False)
+    db.query(models.Upload).filter(models.Upload.id.in_(upload_ids)).delete(synchronize_session=False)
     db.commit()
 
 
@@ -46,11 +54,14 @@ async def upload(file: UploadFile = File(...), db: Session = Depends(get_db),
         os.unlink(tmp_path)
 
     periodo = data["meta"]["periodo"]
-    _clear_periodo(db, periodo)
-    up = models.Upload(periodo=periodo, filename=file.filename, bucket_key=key, uploaded_by=admin.id)
+    semana = data["meta"].get("semana", "")
+    fecha = data["meta"].get("fecha")
+    _clear_snapshot(db, periodo, semana)
+    up = models.Upload(periodo=periodo, semana=semana, fecha=fecha,
+                       filename=file.filename, bucket_key=key, uploaded_by=admin.id)
     db.add(up)
     db.commit()
     db.refresh(up)
     persist_parsed(db, up, data)
 
-    return {"upload_id": up.id, "periodo": periodo}
+    return {"upload_id": up.id, "periodo": periodo, "semana": semana, "fecha": fecha}
