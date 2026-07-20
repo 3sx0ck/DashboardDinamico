@@ -12,3 +12,5 @@ pgdata/
 miniodata/
 # os
 .DS_Store
+# PII: fixture con nombres reales de clientes — NUNCA versionar en repo público
+backend/tests/fixtures/*.xlsx
