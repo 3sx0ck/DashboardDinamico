@@ -4,8 +4,8 @@ import { RequireAuth, RequireAdmin } from "./auth/guards";
 import Landing from "./pages/Landing";
 import Executive from "./formats/Executive";
 import Analitico from "./formats/Analitico";
+import Narrativo from "./formats/Narrativo";
 import Users from "./admin/Users";
-import ProximamentePlaceholder from "./pages/ProximamentePlaceholder";
 
 export default function App() {
   return (
@@ -14,7 +14,7 @@ export default function App() {
       <Route path="/" element={<RequireAuth><Landing /></RequireAuth>} />
       <Route path="/executive" element={<RequireAuth><Executive /></RequireAuth>} />
       <Route path="/analitico" element={<RequireAuth><Analitico /></RequireAuth>} />
-      <Route path="/narrativo" element={<RequireAuth><ProximamentePlaceholder titulo="Reporte Narrativo" /></RequireAuth>} />
+      <Route path="/narrativo" element={<RequireAuth><Narrativo /></RequireAuth>} />
       <Route path="/admin/users" element={<RequireAdmin><Users /></RequireAdmin>} />
     </Routes>
   );
