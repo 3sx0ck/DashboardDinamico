@@ -12,6 +12,21 @@ from app.persist import persist_parsed
 
 router = APIRouter(prefix="/api/uploads", tags=["uploads"])
 
+# Modelos de dominio ligados a un periodo (se reemplazan al re-subir un periodo).
+_DOMAIN_MODELS = [
+    models.Venta, models.Stock, models.Funnel, models.EvolucionMensual,
+    models.Canal, models.MarketingMedio, models.MarketingBanco,
+    models.MarketingKpis, models.AvanceSemanal, models.GrillaUnidad,
+]
+
+
+def _clear_periodo(db: Session, periodo: str):
+    """Borra datos previos del periodo para que re-subir reemplace, no acumule."""
+    for M in _DOMAIN_MODELS:
+        db.query(M).filter(M.periodo == periodo).delete(synchronize_session=False)
+    db.query(models.Upload).filter(models.Upload.periodo == periodo).delete(synchronize_session=False)
+    db.commit()
+
 
 @router.post("", status_code=201)
 async def upload(file: UploadFile = File(...), db: Session = Depends(get_db),
@@ -31,6 +46,7 @@ async def upload(file: UploadFile = File(...), db: Session = Depends(get_db),
         os.unlink(tmp_path)
 
     periodo = data["meta"]["periodo"]
+    _clear_periodo(db, periodo)
     up = models.Upload(periodo=periodo, filename=file.filename, bucket_key=key, uploaded_by=admin.id)
     db.add(up)
     db.commit()
