@@ -40,26 +40,55 @@ externos. Datos se procesan localmente (backend en la misma red / local).
 ## 3. Arquitectura
 
 ```
-[Frontend Vite + Tailwind + Chart.js]  --upload xlsx-->  [Backend FastAPI + pandas]
-        |  render KPIs/charts/filtros        <--JSON normalizado--   parser dedicado PMK
-        |  SheetJS = preview crudo (secundario)
-   docker-compose levanta ambos
+[Frontend Vite+Tailwind+Chart.js] --login--> [Backend FastAPI]
+        |                                        |  auth (users en postgres)
+        |  --upload xlsx (multipart)------------>|  1. guarda raw en bucket (archivo)
+        |                                        |  2. parser dedicado PMK (pandas)
+        |                                        |  3. escribe filas normalizadas en PostgreSQL
+        |  <--JSON desde DB (KPIs/charts)---------|
+   docker-compose: frontend + backend + postgres + bucket (MinIO)
 ```
 
-- **Backend (Python, FastAPI + pandas/openpyxl):** endpoint `POST /api/parse`
-  recibe el xlsx (multipart), aplica el mapeo dedicado PMK y devuelve un JSON
-  normalizado. pandas maneja de forma confiable celdas combinadas y multi-tabla.
-- **Frontend (Vite + Tailwind + Chart.js):** cargador visible (.xlsx/.xls/.csv),
-  envía al backend, renderiza. **Recarga sin reload** = re-POST + re-render.
-  SheetJS/XLSX se incluye como preview cliente de hojas crudas (rol secundario;
-  el mapeo pesado lo hace Python).
-- **Docker:** `docker-compose` levanta frontend + backend con un comando.
+Flujo: login → subir xlsx → backend **archiva el raw en bucket interno** (solo
+archivo, no se reutiliza) → **parsea con pandas** → **persiste filas
+normalizadas en PostgreSQL** → dashboard consulta la DB (no el archivo).
+
+- **Backend (Python, FastAPI + pandas/openpyxl + SQLAlchemy):**
+  - `POST /api/auth/login` — auth simple contra tabla `users`.
+  - `POST /api/uploads` — recibe xlsx, archiva raw en bucket, parsea, persiste en DB, devuelve `upload_id` + periodo.
+  - `GET /api/dashboard?periodo=&torre=&tipologia=&estado=&canal=` — lee de la DB, aplica filtros, devuelve JSON normalizado para KPIs/charts.
+  - pandas maneja de forma confiable celdas combinadas y multi-tabla.
+- **Frontend (Vite + Tailwind + Chart.js):** login, cargador visible
+  (.xlsx/.xls/.csv), envía al backend, renderiza desde la DB. **Recarga sin
+  reload** = subir nuevo archivo → re-fetch → re-render. SheetJS/XLSX queda como
+  preview cliente de hojas crudas (rol secundario; el mapeo pesado lo hace Python).
+- **Persistencia:** PostgreSQL (datos normalizados) + bucket interno MinIO
+  (S3-compatible) para archivar el raw. El raw **no** se reutiliza tras leerlo.
+- **Docker:** `docker-compose` levanta frontend + backend + postgres + minio.
 
 ### Razonamiento SheetJS vs Python
 El requerimiento pedía lectura con SheetJS. Dado que el archivo es muy sucio,
 Python/pandas da resultados mucho más confiables para el mapeo dedicado. SheetJS
 permanece para lectura/preview cliente. Si se prefiere SheetJS puro (sin
 backend), es un cambio de alcance a decidir.
+
+## 3b. Auth (simple, interno)
+
+Login por usuario/contraseña contra tabla `users` en PostgreSQL. Contraseñas
+**hasheadas** (bcrypt/argon2, nunca texto plano). Sesión vía JWT (cookie
+httpOnly) o token. Alcance mínimo por ahora: sin roles/permisos finos, sin
+registro público (usuarios creados por seed/admin). Endpoints del dashboard
+protegidos (requieren sesión válida).
+
+## 3c. Persistencia
+
+- **Bucket (MinIO, S3-compatible interno):** cada upload guarda el archivo crudo
+  con key `pmk/{upload_id}/{filename}`. Propósito: archivo/auditoría. **No** se
+  vuelve a leer para el dashboard.
+- **PostgreSQL:** tablas normalizadas (ver §4b). Cada carga crea un registro en
+  `uploads` (metadata: id, periodo, filename, bucket_key, usuario, fecha) y filas
+  en las tablas de dominio ligadas por `upload_id`. El dashboard consulta estas
+  tablas (con filtros), no el archivo.
 
 ## 4. Modelo normalizado (salida del parser)
 
@@ -86,6 +115,27 @@ backend), es un cambio de alcance a decidir.
   "grillaUnidades": [{ "torre": 3, "cara": "ORIENTE", "piso": 23, "depto": "2314", "estado": "ESC" }]
 }
 ```
+
+## 4b. Esquema PostgreSQL
+
+El parser produce el JSON de §4; el backend lo materializa en tablas relacionales.
+Todas las tablas de dominio llevan `upload_id` (FK) y `periodo` para filtrar.
+
+- `users` (id, email, password_hash, nombre, created_at)
+- `uploads` (id, periodo, filename, bucket_key, uploaded_by → users.id, created_at)
+- `ventas` (id, upload_id, periodo, torre, venta_uf, x_recibir_uf, pagado_uf, escriturados)
+- `stock` (id, upload_id, periodo, torre, tipologia, disponible, reservado, promesado, escriturado, bloqueado)
+- `funnel` (id, upload_id, periodo, ofertas, desistidos, en_curso, promesas, escrituras)
+- `evolucion_mensual` (id, upload_id, periodo, mes, ofertas, promesas, escrituras)
+- `canal` (id, upload_id, periodo, canal, reservas, promesas, escrituras, desistidos)
+- `marketing_medios` (id, upload_id, periodo, medio, cant)
+- `marketing_banco` (id, upload_id, periodo, banco, pct)
+- `marketing_kpis` (id, upload_id, periodo, visitas_sala, leads_efectivos)
+- `avance_semanal` (id, upload_id, periodo, semana, por_firmar, firmadas)
+- `grilla_unidades` (id, upload_id, periodo, torre, cara, piso, depto, estado)
+
+Migraciones con Alembic. El dashboard filtra por el `periodo` más reciente por
+defecto (o el seleccionado).
 
 ## 5. KPIs (automáticos)
 
@@ -127,18 +177,29 @@ bordes redondeados, responsive (desktop gerencia + tablet). Tailwind como sistem
 ```
 DashboardDinamico/
   backend/
-    main.py            # FastAPI app + /api/parse
-    pmk_parser.py      # mapeo dedicado por hoja
+    main.py            # FastAPI app, routers
+    auth.py            # login, hashing, JWT
+    pmk_parser.py      # mapeo dedicado por hoja -> JSON normalizado
+    storage.py         # cliente MinIO (archiva raw)
+    db.py              # SQLAlchemy engine/session
+    models.py          # tablas (users, uploads, dominio)
+    persist.py         # JSON normalizado -> filas DB
+    routers/
+      uploads.py       # POST /api/uploads
+      dashboard.py     # GET /api/dashboard (filtros)
+    alembic/           # migraciones
+    seed.py            # usuario admin inicial
     requirements.txt
   frontend/
-    index.html         # landing 3 botones
+    index.html         # landing 3 botones (post-login)
     src/
-      data/api.js      # upload -> backend, SheetJS preview
-      components/       # KPIs, charts, filtros, uploader
-      formats/          # format1-executive, format2-analitico, format3-narrativo
-      charts/           # wrappers Chart.js
+      data/api.js      # login, upload -> backend, fetch dashboard, SheetJS preview
+      auth/            # pantalla login
+      components/      # KPIs, charts, filtros, uploader
+      formats/         # format1-executive, format2-analitico, format3-narrativo
+      charts/          # wrappers Chart.js
     tailwind/vite config
-  docker-compose.yml
+  docker-compose.yml   # frontend + backend + postgres + minio
   docs/superpowers/specs/2026-07-20-dashboard-pmk-design.md
 ```
 
@@ -150,7 +211,7 @@ mecánica) → mostrar avance corriendo en docker. Branches: `master` → `dev` 
 
 ## 12. Fuera de alcance (YAGNI)
 
-- Auth/login (herramienta interna, fuera de alcance inicial).
-- Persistencia en DB (se trabaja sobre el archivo subido).
+- Roles/permisos finos y registro público (auth simple: solo login + seed admin).
+- Reutilizar el archivo raw del bucket tras leerlo (solo archivo/auditoría).
 - Fallback genérico para archivos arbitrarios (elegido: mapeo dedicado A).
 - Edición de datos desde el dashboard (solo lectura/visualización).
