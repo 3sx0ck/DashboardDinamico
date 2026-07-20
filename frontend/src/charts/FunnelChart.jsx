@@ -8,5 +8,5 @@ export default function FunnelChart({ funnel }) {
     datasets: [{ label: "Funnel", data: [funnel.ofertas, funnel.desistidos, funnel.enCurso, funnel.promesas, funnel.escrituras],
       backgroundColor: ["#6366f1","#ef4444","#f59e0b","#3b82f6","#10b981"] }],
   };
-  return <Bar data={data} options={{ responsive: true, plugins: { legend: { display: false } } }} />;
+  return <Bar data={data} options={{ responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }} />;
 }

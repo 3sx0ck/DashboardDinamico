@@ -45,7 +45,7 @@ function Card({ title, children }) {
   return (
     <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-md p-5">
       <h3 className="text-slate-700 dark:text-slate-200 font-semibold mb-3">{title}</h3>
-      {children}
+      <div className="h-64 relative">{children}</div>
     </div>
   );
 }

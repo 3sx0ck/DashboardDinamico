@@ -9,5 +9,5 @@ export default function StockTorreChart({ stock }) {
     data: torres.map((t) => stock.filter((s) => s.torre === t).reduce((a, s) => a + (s[es] || 0), 0)),
   }));
   return <Bar data={{ labels: torres.map((t)=>`Torre ${t}`), datasets }}
-              options={{ responsive:true, scales:{ x:{ stacked:true }, y:{ stacked:true } } }} />;
+              options={{ responsive:true, maintainAspectRatio:false, scales:{ x:{ stacked:true }, y:{ stacked:true } } }} />;
 }
