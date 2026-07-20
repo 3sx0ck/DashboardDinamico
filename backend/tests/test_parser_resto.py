@@ -14,7 +14,24 @@ def test_grilla_unidades():
     g = parse_pmk(FIX)["grillaUnidades"]
     assert len(g) > 0
     for u in g[:5]:
-        assert {"torre", "piso", "depto", "estado"} <= u.keys()
+        assert {"torre", "cara", "piso", "depto", "estado"} <= u.keys()
+
+
+def test_grilla_sin_desconocidos():
+    # El parser antiguo generaba filas basura con estado "DESCONOCIDO" por
+    # desalineación de columnas entre los bloques ORIENTE/PONIENTE. El nuevo
+    # detecta pares (depto numérico + estado texto) por contenido.
+    g = parse_pmk(FIX)["grillaUnidades"]
+    estados = {u["estado"] for u in g}
+    assert "DESCONOCIDO" not in estados
+
+
+def test_grilla_ambas_caras():
+    g = parse_pmk(FIX)["grillaUnidades"]
+    caras = {u["cara"] for u in g}
+    assert "ORIENTE" in caras
+    assert "PONIENTE" in caras
+    assert all(u["torre"] == 3 for u in g)
 
 
 def test_meta_periodo():

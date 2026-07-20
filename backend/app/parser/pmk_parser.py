@@ -122,19 +122,33 @@ _VENTAS_TORRE_CONFIG = [
 
 
 def _parse_ventas(wb) -> dict[str, Any]:
+    """Escriturados = ESC. Pagado + Esc x pagar (ambos son unidades ya
+    escrituradas, difieren solo en si el pago está liquidado). Validado
+    contra Torre 3, que además trae un total explícito "Escriturados" que
+    coincide exactamente con esa suma (129+25=154).
+    La columna de CONTEO está en label_col+1 (value_col=label_col+2 es el
+    monto en UF), mismo patrón para las 3 torres.
+    """
     ws = wb["ESCRITURACIÓN"]
     por_torre = []
     total_uf = 0.0
     for cfg in _VENTAS_TORRE_CONFIG:
-        venta_row = _find_in_col(ws, cfg["label_col"], cfg["venta_label"])
-        recibir_row = _find_in_col(ws, cfg["label_col"], cfg["recibir_label"])
+        label_col = cfg["label_col"]
+        count_col = label_col + 1
+        venta_row = _find_in_col(ws, label_col, cfg["venta_label"])
+        recibir_row = _find_in_col(ws, label_col, cfg["recibir_label"])
+        pagado_row = _find_in_col(ws, label_col, "ESC. Pagado")
+        xpagar_row = _find_in_col(ws, label_col, "Esc x pagar")
         venta_uf = _num(_cell(ws, venta_row, cfg["value_col"])) if venta_row else 0.0
         x_recibir_uf = _num(_cell(ws, recibir_row, cfg["value_col"])) if recibir_row else 0.0
+        escriturados = int(_num(_cell(ws, pagado_row, count_col))) if pagado_row else 0
+        escriturados += int(_num(_cell(ws, xpagar_row, count_col))) if xpagar_row else 0
         por_torre.append(
             {
                 "torre": cfg["torre"],
                 "ventaUF": venta_uf,
                 "xRecibirUF": x_recibir_uf,
+                "escriturados": escriturados,
             }
         )
         total_uf += venta_uf
@@ -361,21 +375,54 @@ def _map_estado(raw: Any) -> str:
     return _ESTADO_MAP.get(key, key)
 
 
-def _parse_grilla(wb) -> list[dict[str, Any]]:
-    ws = wb["Ofertas x semana (JUNIO)"]
-
-    # Locate the torre number from the header text (e.g. "TORRE 3 -
-    # ARAUCARIA - ORIENTE") in the first few rows.
-    torre = 0
-    for row in ws.iter_rows(min_row=1, max_row=5):
+def _find_torre_headers(ws, max_header_row: int = 5) -> list[tuple[int, int, str]]:
+    """Encuentra encabezados tipo "TORRE 3 - ARAUCARIA - ORIENTE" en las
+    primeras filas y devuelve [(columna, torre, cara), ...]. La hoja tiene
+    varios bloques de torre/cara lado a lado; cada uno trae su propio
+    encabezado, no necesariamente alineado al borde izquierdo del bloque.
+    """
+    headers: list[tuple[int, int, str]] = []
+    for row in ws.iter_rows(min_row=1, max_row=max_header_row):
         for cell in row:
             if isinstance(cell.value, str) and "TORRE" in cell.value.upper():
                 match = re.search(r"TORRE\s*(\d+)", cell.value.upper())
-                if match:
-                    torre = int(match.group(1))
-                    break
-        if torre:
-            break
+                if not match:
+                    continue
+                torre = int(match.group(1))
+                parts = [p.strip() for p in cell.value.upper().split("-")]
+                cara = parts[-1] if len(parts) > 1 else ""
+                headers.append((cell.column, torre, cara))
+    return headers
+
+
+def _torre_cara_for_col(headers: list[tuple[int, int, str]], col: int) -> tuple[int, str]:
+    """Asigna el encabezado de torre/cara más cercano (por columna) a `col`.
+    Los encabezados caen dentro de su bloque de datos, no en el borde, así
+    que "más cercano" acierta mejor que "el último a la izquierda"."""
+    if not headers:
+        return 0, ""
+    hcol, torre, cara = min(headers, key=lambda h: abs(h[0] - col))
+    return torre, cara
+
+
+def _looks_like_depto(value: Any) -> bool:
+    """Un depto real es un entero de 2-5 dígitos (ej. 2314). Evita confundir
+    texto (headers, estados) o pisos sueltos con números de departamento."""
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and 10 <= value <= 99999
+
+
+def _parse_grilla(wb) -> list[dict[str, Any]]:
+    """Lee la grilla de unidades detectando pares (depto, estado) POR
+    CONTENIDO en vez de por columna fija: la hoja tiene varios bloques de
+    torre/cara lado a lado, desalineados entre sí por columnas (el bloque
+    ORIENTE usa columnas impares para depto, PONIENTE usa pares), así que un
+    stride fijo desde una columna inicial lee texto (headers/estados) como si
+    fuera depto y genera filas basura. Aquí se avanza celda por celda: si una
+    celda parece depto (entero) y la siguiente es texto, es una unidad real;
+    si no, se avanza de a una celda para resincronizar con el siguiente bloque.
+    """
+    ws = wb["Ofertas x semana (JUNIO)"]
+    headers = _find_torre_headers(ws)
 
     result = []
     max_row = ws.max_row
@@ -385,17 +432,21 @@ def _parse_grilla(wb) -> list[dict[str, Any]]:
         if not isinstance(piso, (int, float)) or isinstance(piso, bool):
             continue
         col = 3
-        while col + 1 <= max_col:
+        while col <= max_col:
             depto = _cell(ws, row, col)
-            estado_raw = _cell(ws, row, col + 1)
-            if depto is not None:
+            estado_raw = _cell(ws, row, col + 1) if col + 1 <= max_col else None
+            if _looks_like_depto(depto) and isinstance(estado_raw, str) and estado_raw.strip():
+                torre, cara = _torre_cara_for_col(headers, col)
                 result.append(
                     {
                         "torre": torre,
+                        "cara": cara,
                         "piso": int(piso),
                         "depto": depto,
                         "estado": _map_estado(estado_raw),
                     }
                 )
-            col += 2
+                col += 2
+            else:
+                col += 1
     return result

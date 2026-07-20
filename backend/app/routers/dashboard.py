@@ -82,6 +82,6 @@ def dashboard(periodo: Optional[str] = None, upload_id: Optional[int] = None, to
             "medios": [{"medio": m.medio, "cant": m.cant}
                        for m in db.query(models.MarketingMedio).filter_by(upload_id=up.id).all()],
         },
-        "grillaUnidades": [{"torre": g.torre, "piso": g.piso, "depto": g.depto, "estado": g.estado}
+        "grillaUnidades": [{"torre": g.torre, "cara": g.cara, "piso": g.piso, "depto": g.depto, "estado": g.estado}
                            for g in db.query(models.GrillaUnidad).filter_by(upload_id=up.id).all()],
     }
