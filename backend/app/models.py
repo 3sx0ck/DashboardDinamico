@@ -16,6 +16,8 @@ class Upload(Base):
     __tablename__ = "uploads"
     id: Mapped[int] = mapped_column(primary_key=True)
     periodo: Mapped[str] = mapped_column(String, index=True)
+    semana: Mapped[str] = mapped_column(String, default="")
+    fecha: Mapped[str | None] = mapped_column(String, nullable=True)
     filename: Mapped[str] = mapped_column(String)
     bucket_key: Mapped[str] = mapped_column(String)
     uploaded_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
