@@ -87,8 +87,39 @@ def _parse_funnel(wb) -> dict[str, Any]:
     }
 
 
+MESES = [
+    "Enero",
+    "Febrero",
+    "Marzo",
+    "Abril",
+    "Mayo",
+    "Junio",
+    "Julio",
+    "Agosto",
+    "Septiembre",
+    "Octubre",
+    "Noviembre",
+    "Diciembre",
+]
+
+
 def _parse_evolucion(wb) -> list[dict[str, Any]]:
-    return []
+    ws = wb["GESTIÓN JUNIO"]
+    result = []
+    for row in range(13, 25):
+        mes = _cell(ws, row, 2)
+        if isinstance(mes, str) and mes.strip() in MESES:
+            result.append(
+                {
+                    "mes": mes.strip(),
+                    "ofertas": _num(_cell(ws, row, 3)),
+                    "desistidos": _num(_cell(ws, row, 4)),
+                    "enCurso": _num(_cell(ws, row, 5)),
+                    "promesas": _num(_cell(ws, row, 6)),
+                    "escrituras": _num(_cell(ws, row, 7)),
+                }
+            )
+    return result
 
 
 def _parse_canal(wb) -> list[dict[str, Any]]:
