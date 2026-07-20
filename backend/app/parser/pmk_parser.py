@@ -64,8 +64,49 @@ def _find_in_col(ws, col: int, label: str, max_row: int = 48, min_row: int = 1) 
 # Section parsers (implemented incrementally, TDD)
 # ---------------------------------------------------------------------------
 
+_MESES_MAP = {
+    "enero": 1,
+    "febrero": 2,
+    "marzo": 3,
+    "abril": 4,
+    "mayo": 5,
+    "junio": 6,
+    "julio": 7,
+    "agosto": 8,
+    "septiembre": 9,
+    "octubre": 10,
+    "noviembre": 11,
+    "diciembre": 12,
+}
+
+_META_RE = re.compile(r"del\s+(\d+)\s+al\s+(\d+)\s+de\s+(\w+)\s+(\d{4})", re.IGNORECASE)
+
+
 def _parse_meta(wb) -> dict[str, Any]:
-    return {"proyecto": "PMK", "periodo": "2026-07"}
+    try:
+        ws = wb["AVANCE ESC."]
+        raw = _cell(ws, 2, 2)
+        if not isinstance(raw, str):
+            raise ValueError("B2 no es texto")
+        match = _META_RE.search(raw)
+        if not match:
+            raise ValueError("B2 no coincide con el patron esperado")
+        day_from, day_to, month_name, year = match.groups()
+        month_key = month_name.strip().lower()
+        month = _MESES_MAP.get(month_key)
+        if month is None:
+            raise ValueError(f"mes desconocido: {month_name}")
+        year_int = int(year)
+        day_to_int = int(day_to)
+        month_abbr = month_name.strip()[:3].lower()
+        return {
+            "proyecto": "PMK",
+            "periodo": f"{year_int}-{month:02d}",
+            "semana": f"{int(day_from)}-{day_to_int} {month_abbr}",
+            "fecha": f"{year_int}-{month:02d}-{day_to_int:02d}",
+        }
+    except Exception:
+        return {"proyecto": "PMK", "periodo": "desconocido", "semana": "s/f", "fecha": None}
 
 
 # ESCRITURACIÓN sheet: per-torre blocks calibrated against the real fixture.
