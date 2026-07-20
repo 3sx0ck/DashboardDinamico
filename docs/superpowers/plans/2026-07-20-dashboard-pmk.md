@@ -2113,3 +2113,51 @@ git commit -m "feat: formato Narrativo + heatmap torres"
   del compose o configurar sqlite en `conftest.py` para tests unitarios rápidos.
 - **PII:** el fixture tiene nombres reales. NO subir el fixture a repos públicos;
   añadir a `.gitignore` si el repo es público, o usar datos anonimizados.
+
+---
+
+# F7 — Snapshots temporales (mes + semana) + selector histórico + modal de carga
+
+> **Contexto:** el xlsx es un reporte SEMANAL que acumula. Cada carga = un
+> snapshot semanal. Se agrupan por MES. El usuario navega histórico por mes y por
+> semana. La fecha/periodo se deriva DEL ARCHIVO (hoja `AVANCE ESC.` celda B2:
+> "Semana del 6 al 10 de julio 2026").
+>
+> **Corrige un bug real:** hoy `_parse_meta` hardcodea `periodo="2026-07"`, así que
+> cualquier archivo nuevo sobrescribiría al anterior (mismo periodo). F7 deriva el
+> periodo real y separa snapshots por (mes, semana).
+
+**Modelo temporal:**
+- `Upload` = snapshot. Campos nuevos: `semana` (str, ej "6-10 jul"), `fecha` (Date, corte del reporte, para ordenar). `periodo` = mes `YYYY-MM`.
+- Filas de dominio siguen con `upload_id` + `periodo`. El dashboard consulta por `upload_id` (un snapshot), NO suma por mes.
+- Re-subir la MISMA semana (mismo periodo+semana) reemplaza; una semana distinta acumula.
+
+### Task 7.1: Parser deriva periodo+semana+fecha (backend)
+- Modificar `_parse_meta(wb)` en `backend/app/parser/pmk_parser.py`:
+  - Leer `AVANCE ESC.` B2 → regex `del\s+(\d+)\s+al\s+(\d+)\s+de\s+(\w+)\s+(\d{4})`.
+  - Mapa meses ES → nº. `periodo = f"{año}-{mes:02d}"`. `semana = f"{d1}-{d2} {mes_abbr}"`. `fecha = date(año, mes, d2)` (ISO string).
+  - Fallback si no matchea: periodo="desconocido", semana="s/f", fecha=None. (mantener robustez).
+- Test `backend/tests/test_parser_meta.py`: fixture → meta.periodo == "2026-07", meta.semana contiene "10", meta.fecha == "2026-07-10".
+
+### Task 7.2: Modelo Upload + migración
+- `backend/app/models.py` Upload: agregar `semana: Mapped[str]`, `fecha: Mapped[str | None]` (guardar ISO date como String para simplicidad).
+- Migración alembic (dentro del contenedor). 
+
+### Task 7.3: Snapshot logic en upload + resolución dashboard + endpoint periodos
+- `backend/app/routers/uploads.py`: reemplazar `_clear_periodo(periodo)` por `_clear_snapshot(db, periodo, semana)` que borra filas de dominio de uploads con mismo (periodo, semana) y esos uploads. Guardar `semana` y `fecha` en el Upload nuevo.
+- `backend/app/routers/dashboard.py`: 
+  - Resolver un `upload_id`: si viene `upload_id` úsalo; elif viene `periodo` → último Upload (por fecha desc) de ese mes; else → último Upload global.
+  - Consultar TODAS las secciones de dominio por `upload_id` (no por periodo) para no sumar semanas.
+  - Devolver también `semana` y `fecha` del snapshot en la respuesta.
+- Nuevo `GET /api/periodos` (auth): devuelve `[{periodo, weeks:[{upload_id, semana, fecha}]}]` ordenado desc por fecha.
+- Tests: subir fixture dos veces con semanas distintas (simular editando meta) NO es trivial; test mínimo: subir una vez, `/api/periodos` devuelve 1 mes con 1 semana; dashboard por upload_id devuelve datos de ese snapshot.
+
+### Task 7.4: Frontend — selector histórico + modal de carga
+- `frontend/src/api/client.js`: `getPeriodos()`; `getDashboard({periodo, upload_id})`.
+- `frontend/src/hooks/useDashboard.js`: cargar periodos, estado `{periodo, uploadId}`, default = último. Exponer `periodos`, selección y `setSel`.
+- `frontend/src/components/PeriodSelector.jsx`: dropdown MES + dropdown SEMANA (weeks del mes elegido). Al cambiar, actualiza selección → refetch.
+- `frontend/src/components/Uploader.jsx`: overlay modal "Generando dashboard..." (spinner, fondo oscuro) mientras sube/parsea; al terminar, refresca periodos y selecciona el snapshot nuevo.
+- Integrar `PeriodSelector` en el header de los 3 formatos (Executive, Analitico, Narrativo).
+- Verificar en browser: selector cambia de snapshot; modal aparece al subir.
+
+**Cierre F7:** con el archivo de julio del hermano, subir → aparece nueva semana en el selector, se pinta en los 3 formatos, y el snapshot anterior sigue accesible.
