@@ -3,6 +3,7 @@ import { useDashboard } from "../hooks/useDashboard";
 import KpiCard from "../components/KpiCard";
 import Uploader from "../components/Uploader";
 import FilterBar from "../components/FilterBar";
+import PeriodSelector from "../components/PeriodSelector";
 import FunnelChart from "../charts/FunnelChart";
 import StockTorreChart from "../charts/StockTorreChart";
 import EvolucionChart from "../charts/EvolucionChart";
@@ -11,18 +12,23 @@ import CanalChart from "../charts/CanalChart";
 
 export default function Executive() {
   const { auth } = useAuth();
-  const { data, loading, filters, setFilters, reload } = useDashboard();
+  const { data, loading, periodos, sel, setSel, filters, setFilters, refreshAfterUpload } = useDashboard();
   if (loading || !data) return <div className="p-8 text-slate-400">Cargando...</div>;
   if (data.empty) return <div className="p-8 text-slate-400">Sin datos. Suba un archivo.</div>;
   const torres = [...new Set((data.ventas || []).map((v) => v.torre))];
   const fmt = (n) => new Intl.NumberFormat("es-CL").format(Math.round(n || 0));
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900 p-6 space-y-6">
-      <header className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Parque Mackenna · {data.periodo}</h1>
-        <div className="flex gap-3">
+      <header className="flex flex-wrap justify-between items-center gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900 dark:text-white">
+            Parque Mackenna · {data.periodo} · Semana {data.semana}
+          </h1>
+        </div>
+        <div className="flex gap-3 items-center flex-wrap">
+          <PeriodSelector periodos={periodos} sel={sel} setSel={setSel} />
           <FilterBar filters={filters} setFilters={setFilters} torres={torres} />
-          {auth.rol === "admin" && <Uploader onDone={reload} />}
+          {auth.rol === "admin" && <Uploader onDone={(resp) => refreshAfterUpload(resp.upload_id)} />}
         </div>
       </header>
       <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

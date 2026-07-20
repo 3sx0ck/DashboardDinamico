@@ -14,6 +14,7 @@ export async function login(email, password) {
   return data; // {access_token, rol, nombre}
 }
 export const getDashboard = (params) => api.get("/api/dashboard", { params }).then((r) => r.data);
+export const getPeriodos = () => api.get("/api/periodos").then((r) => r.data);
 export const uploadFile = (file) => {
   const fd = new FormData(); fd.append("file", file);
   return api.post("/api/uploads", fd).then((r) => r.data);

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useAuth } from "../auth/AuthContext";
 import { useDashboard } from "../hooks/useDashboard";
 import Uploader from "../components/Uploader";
+import PeriodSelector from "../components/PeriodSelector";
 import FunnelChart from "../charts/FunnelChart";
 import StockTorreChart from "../charts/StockTorreChart";
 import EvolucionChart from "../charts/EvolucionChart";
@@ -19,7 +20,7 @@ const fmt = (n) => new Intl.NumberFormat("es-CL").format(Math.round(n || 0));
 
 export default function Analitico() {
   const { auth } = useAuth();
-  const { data, loading, reload } = useDashboard();
+  const { data, loading, periodos, sel, setSel, refreshAfterUpload } = useDashboard();
   const [tab, setTab] = useState("Ventas");
 
   if (loading || !data) return <div className="p-8 text-slate-400">Cargando...</div>;
@@ -31,7 +32,12 @@ export default function Analitico() {
         <div className="mb-8">
           <p className="text-xs uppercase tracking-widest text-indigo-400">Parque Mackenna</p>
           <h1 className="text-lg font-bold mt-1">Analítico</h1>
-          <p className="text-xs text-slate-500 mt-1">Periodo {data.periodo}</p>
+          <p className="text-xs text-slate-500 mt-1">
+            Periodo {data.periodo} · Semana {data.semana}
+          </p>
+        </div>
+        <div className="mb-4">
+          <PeriodSelector periodos={periodos} sel={sel} setSel={setSel} />
         </div>
         <nav className="space-y-1 flex-1">
           {TABS.map((t) => (
@@ -50,7 +56,7 @@ export default function Analitico() {
         </nav>
         {auth.rol === "admin" && (
           <div className="pt-4 border-t border-slate-800">
-            <Uploader onDone={reload} />
+            <Uploader onDone={(resp) => refreshAfterUpload(resp.upload_id)} />
           </div>
         )}
       </aside>

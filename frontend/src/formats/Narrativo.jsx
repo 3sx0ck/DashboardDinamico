@@ -2,11 +2,12 @@ import { Link } from "react-router-dom";
 import { useDashboard } from "../hooks/useDashboard";
 import HeatmapTorre from "../charts/HeatmapTorre";
 import EvolucionChart from "../charts/EvolucionChart";
+import PeriodSelector from "../components/PeriodSelector";
 
 const fmt = (n) => new Intl.NumberFormat("es-CL").format(Math.round(n || 0));
 
 export default function Narrativo() {
-  const { data, loading } = useDashboard();
+  const { data, loading, periodos, sel, setSel } = useDashboard();
   if (loading || !data) return <div className="min-h-screen bg-slate-900 p-8 text-slate-400">Cargando...</div>;
   if (data.empty) return <div className="min-h-screen bg-slate-900 p-8 text-slate-400">Sin datos. Suba un archivo.</div>;
 
@@ -19,8 +20,14 @@ export default function Narrativo() {
         &larr; Volver
       </Link>
 
+      <div className="fixed top-6 right-6 z-10">
+        <PeriodSelector periodos={periodos} sel={sel} setSel={setSel} />
+      </div>
+
       <section className="min-h-[70vh] flex flex-col justify-center items-center text-center px-6">
-        <p className="text-slate-400 uppercase tracking-[0.3em] text-sm">Parque Mackenna · {data.periodo}</p>
+        <p className="text-slate-400 uppercase tracking-[0.3em] text-sm">
+          Parque Mackenna · {data.periodo} · Semana {data.semana}
+        </p>
         <h1 className="text-6xl sm:text-7xl lg:text-8xl font-black mt-6 bg-gradient-to-br from-white to-slate-400 bg-clip-text text-transparent">
           {fmt(data.kpis.ventaTotalUF)} UF
         </h1>
