@@ -18,6 +18,12 @@ Archivo: `INFORME PARQUE MACKENNA FINAL.xlsx`. **No es tabla plana**: es un
 reporte con múltiples tablas heterogéneas por hoja, celdas combinadas, headers
 mezclados y español de dominio inmobiliario.
 
+**El xlsx es el FORMATO fijo:** los archivos que se subirán cada mes mantienen la
+**misma estructura** (mismas hojas, mismas posiciones de tablas). El parser mapea
+por posición/coordenada conocida de cada hoja. Cambia solo el contenido (números,
+periodo), no el layout. Esto reduce el riesgo del parser: se calibra una vez
+contra este formato y sirve para los siguientes.
+
 Hojas relevantes y su rol:
 
 | Hoja | Contenido | Uso |
@@ -40,7 +46,7 @@ externos. Datos se procesan localmente (backend en la misma red / local).
 ## 3. Arquitectura
 
 ```
-[Frontend Vite+Tailwind+Chart.js] --login--> [Backend FastAPI]
+[Frontend React+Vite+Tailwind+Chart.js] --login--> [Backend FastAPI]
         |                                        |  auth (users en postgres)
         |  --upload xlsx (multipart)------------>|  1. guarda raw en bucket (archivo)
         |                                        |  2. parser dedicado PMK (pandas)
@@ -58,10 +64,11 @@ normalizadas en PostgreSQL** → dashboard consulta la DB (no el archivo).
   - `POST /api/uploads` — recibe xlsx, archiva raw en bucket, parsea, persiste en DB, devuelve `upload_id` + periodo.
   - `GET /api/dashboard?periodo=&torre=&tipologia=&estado=&canal=` — lee de la DB, aplica filtros, devuelve JSON normalizado para KPIs/charts.
   - pandas maneja de forma confiable celdas combinadas y multi-tabla.
-- **Frontend (Vite + Tailwind + Chart.js):** login, cargador visible
-  (.xlsx/.xls/.csv), envía al backend, renderiza desde la DB. **Recarga sin
-  reload** = subir nuevo archivo → re-fetch → re-render. SheetJS/XLSX queda como
-  preview cliente de hojas crudas (rol secundario; el mapeo pesado lo hace Python).
+- **Frontend (React + Vite + Tailwind + Chart.js vía react-chartjs-2):** login,
+  cargador visible (.xlsx/.xls/.csv), envía al backend, renderiza desde la DB.
+  **Recarga sin reload** = subir nuevo archivo → re-fetch → re-render (SPA React,
+  sin recargar página). SheetJS/XLSX queda como preview cliente de hojas crudas
+  (rol secundario; el mapeo pesado lo hace Python).
 - **Persistencia:** PostgreSQL (datos normalizados) + bucket interno MinIO
   (S3-compatible) para archivar el raw. El raw **no** se reutiliza tras leerlo.
 - **Docker:** `docker-compose` levanta frontend + backend + postgres + minio.
@@ -175,8 +182,9 @@ recalculan KPIs y gráficos sin recargar.
 
 ## 8. Los 3 formatos (landing = 3 botones)
 
-Los tres consumen el **mismo** JSON normalizado y el mismo cargador/filtros.
-Difieren en layout/experiencia:
+Tres rutas/vistas React que consumen el **mismo** hook de datos y filtros.
+Landing (`Landing.jsx`) muestra 3 botones que navegan a cada formato. Difieren en
+layout/experiencia:
 
 1. **Executive Overview** — una pantalla: fila de KPIs arriba + grid de 6 gráficos.
    Dark premium, minimal, cards con sombras suaves. Para lectura rápida de gerencia.
@@ -188,8 +196,9 @@ Difieren en layout/experiencia:
 
 ## 9. Diseño visual
 
-Premium tipo SaaS/BI. Modo oscuro (default) + claro. Cards, sombras suaves,
-bordes redondeados, responsive (desktop gerencia + tablet). Tailwind como sistema.
+Premium tipo SaaS/BI, en React. Modo oscuro (default) + claro (Tailwind dark
+mode). Cards, sombras suaves, bordes redondeados, responsive (desktop gerencia +
+tablet). Tailwind como sistema de diseño; componentes React reutilizables.
 
 ## 10. Estructura propuesta
 
@@ -211,16 +220,20 @@ DashboardDinamico/
     alembic/           # migraciones
     seed.py            # usuario admin inicial
     requirements.txt
-  frontend/
-    index.html         # landing 3 botones (post-login)
+  frontend/            # React + Vite
+    index.html
     src/
-      data/api.js      # login, upload -> backend, fetch dashboard, SheetJS preview
-      auth/            # pantalla login + estado de sesión/rol
-      admin/           # panel gestión usuarios (solo admin)
-      components/      # KPIs, charts, filtros, uploader (uploader solo admin)
-      formats/         # format1-executive, format2-analitico, format3-narrativo
-      charts/          # wrappers Chart.js
-    tailwind/vite config
+      main.jsx         # entry, router
+      App.jsx          # rutas + guards por rol
+      api/client.js    # axios/fetch: login, upload, dashboard, users
+      auth/            # AuthContext (sesión/rol), Login.jsx, RequireAuth/RequireAdmin
+      admin/           # Users.jsx (panel gestión usuarios, solo admin)
+      components/      # KpiCard, FilterBar, Uploader (solo admin), Layout
+      charts/          # componentes react-chartjs-2 (Funnel, StockTorre, ...)
+      formats/         # Executive.jsx, Analitico.jsx, Narrativo.jsx
+      pages/           # Landing.jsx (3 botones -> rutas de formato)
+      hooks/           # useDashboard(filtros)
+    tailwind.config.js / vite.config.js
   docker-compose.yml   # frontend + backend + postgres + minio
   docs/superpowers/specs/2026-07-20-dashboard-pmk-design.md
 ```
