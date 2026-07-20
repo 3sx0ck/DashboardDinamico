@@ -67,12 +67,85 @@ def _parse_meta(wb) -> dict[str, Any]:
     return {"proyecto": "PMK", "periodo": "2026-07"}
 
 
+# ESCRITURACIÓN sheet: per-torre blocks calibrated against the real fixture.
+# Torre 2: label col B(2), value col D(4).
+# Torre 3: label col J(10), value col L(12).
+# Torre 5 has no "TOTAL VENTA" label; the closest equivalent found in the
+# fixture is "SUMA TOTAL VENTA TORRE 5" (label col F(6), value col H(8)).
+_VENTAS_TORRE_CONFIG = [
+    {"torre": 2, "label_col": 2, "value_col": 4, "venta_label": "TOTAL VENTA", "recibir_label": "X RECIBIR"},
+    {"torre": 3, "label_col": 10, "value_col": 12, "venta_label": "TOTAL VENTA", "recibir_label": "X RECIBIR"},
+    {"torre": 5, "label_col": 6, "value_col": 8, "venta_label": "SUMA TOTAL VENTA TORRE 5", "recibir_label": "X RECIBIR"},
+]
+
+
 def _parse_ventas(wb) -> dict[str, Any]:
-    return {"ventaTotalUF": 0, "porTorre": []}
+    ws = wb["ESCRITURACIÓN"]
+    por_torre = []
+    total_uf = 0.0
+    for cfg in _VENTAS_TORRE_CONFIG:
+        venta_row = _find_in_col(ws, cfg["label_col"], cfg["venta_label"])
+        recibir_row = _find_in_col(ws, cfg["label_col"], cfg["recibir_label"])
+        venta_uf = _num(_cell(ws, venta_row, cfg["value_col"])) if venta_row else 0.0
+        x_recibir_uf = _num(_cell(ws, recibir_row, cfg["value_col"])) if recibir_row else 0.0
+        por_torre.append(
+            {
+                "torre": cfg["torre"],
+                "ventaUF": venta_uf,
+                "xRecibirUF": x_recibir_uf,
+            }
+        )
+        total_uf += venta_uf
+    return {"ventaTotalUF": total_uf, "porTorre": por_torre}
+
+
+# Tipología sub-blocks in ESCRITURACIÓN: headers "NO O NP P SP SO % Stock
+# Total" at cols S..Z (19..26), tipología label in col P (16), rows below
+# marked with a "•" bullet (e.g. "•2D-2B"). Two such blocks were located in
+# the fixture: one for Torre 3 (header row 4, data rows 5-7) and one for
+# Torre 2 (header row 17, data rows 18-20). Torre 5 has no equivalent block.
+#
+# ASSUMPTION (semantic mapping, genuinely ambiguous from the raw labels):
+#   NO ("No Ofertado")  -> disponible
+#   O  ("Ofertado")     -> reservado
+#   P  ("Promesado")    -> promesado
+#   SO ("Sin Oferta"?)  -> escriturado (best-effort stand-in; the sheet has
+#                          no column that unambiguously maps to escriturado
+#                          at the tipología level)
+#   NP and SP are ignored (likely complements of NP/P and SP/O respectively).
+_STOCK_TIPOLOGIA_LABEL_COL = 16
+_STOCK_COL_NO = 19
+_STOCK_COL_O = 20
+_STOCK_COL_P = 22
+_STOCK_COL_SO = 24
+_STOCK_BLOCKS = [
+    {"torre": 3, "start_row": 5, "end_row": 7},
+    {"torre": 2, "start_row": 18, "end_row": 20},
+]
 
 
 def _parse_stock(wb) -> dict[str, Any]:
-    return {"porTorre": []}
+    ws = wb["ESCRITURACIÓN"]
+    result = []
+    for block in _STOCK_BLOCKS:
+        for row in range(block["start_row"], block["end_row"] + 1):
+            label = _cell(ws, row, _STOCK_TIPOLOGIA_LABEL_COL)
+            if not isinstance(label, str):
+                continue
+            tipologia = label.strip().lstrip("•").strip()
+            if not tipologia:
+                continue
+            result.append(
+                {
+                    "torre": block["torre"],
+                    "tipologia": tipologia,
+                    "disponible": _num(_cell(ws, row, _STOCK_COL_NO)),
+                    "reservado": _num(_cell(ws, row, _STOCK_COL_O)),
+                    "promesado": _num(_cell(ws, row, _STOCK_COL_P)),
+                    "escriturado": _num(_cell(ws, row, _STOCK_COL_SO)),
+                }
+            )
+    return {"porTorre": result}
 
 
 def _parse_funnel(wb) -> dict[str, Any]:
