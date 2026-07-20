@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import openpyxl
 from typing import Any
 
@@ -213,13 +214,110 @@ def _parse_canal(wb) -> list[dict[str, Any]]:
     return result
 
 
+def _sum_label_row(ws, label_col: int, label: str, value_start_col: int, value_end_col: int, max_row: int) -> float:
+    """Sum numeric values across a row range, for every row whose label
+    (in label_col) exactly matches `label`. Used for JULIO's daily-tracked
+    metrics ("VISITAS", "LEADS EFECTIVOS") which repeat once per torre
+    block and spread their values across many day columns.
+    """
+    target = label.strip().upper()
+    total = 0.0
+    for row in range(1, max_row + 1):
+        value = ws.cell(row=row, column=label_col).value
+        if isinstance(value, str) and value.strip().upper() == target:
+            for col in range(value_start_col, value_end_col + 1):
+                total += _num(ws.cell(row=row, column=col).value)
+    return total
+
+
 def _parse_marketing(wb) -> dict[str, Any]:
-    return {"medios": [], "visitasSala": 0, "leadsEfectivos": 0, "banco": []}
+    ws_medios = wb["Medios (JUNIO)"]
+    # Medios (JUNIO): label col B(2), value col C(3), rows 4-11.
+    medios = []
+    for row in range(4, 12):
+        medio = _cell(ws_medios, row, 2)
+        if isinstance(medio, str) and medio.strip():
+            medios.append({"medio": medio.strip(), "cant": _num(_cell(ws_medios, row, 3))})
+
+    ws_julio = wb["JULIO"]
+    # JULIO: labels "VISITAS" and "LEADS EFECTIVOS" repeat once per torre
+    # block (col B), with daily values spread across cols C..AR.
+    visitas_sala = _sum_label_row(ws_julio, 2, "VISITAS", 3, 44, ws_julio.max_row)
+    leads_efectivos = _sum_label_row(ws_julio, 2, "LEADS EFECTIVOS", 3, 44, ws_julio.max_row)
+
+    return {
+        "medios": medios,
+        "visitasSala": visitas_sala,
+        "leadsEfectivos": leads_efectivos,
+        "banco": [],
+    }
 
 
 def _parse_avance(wb) -> dict[str, Any]:
-    return {}
+    ws = wb["AVANCE ESC."]
+    semana = _cell(ws, 2, 2)
+    if not isinstance(semana, str):
+        semana = None
+    else:
+        semana = semana.strip()
+    row = _find_in_col(ws, 2, "Por firmar", max_row=20)
+    por_firmar = _num(_cell(ws, row, 3)) if row else 0.0
+    return {"semana": semana, "porFirmar": por_firmar}
+
+
+_ESTADO_MAP = {
+    "ESC.": "ESC",
+    "ESC": "ESC",
+    "PROM": "PROM",
+    "RES.": "RES",
+    "RES": "RES",
+    "DISPONIBLE": "DISP",
+    "INVM": "INVM",
+}
+
+
+def _map_estado(raw: Any) -> str:
+    if not isinstance(raw, str):
+        return "DESCONOCIDO"
+    key = raw.strip().upper()
+    return _ESTADO_MAP.get(key, key)
 
 
 def _parse_grilla(wb) -> list[dict[str, Any]]:
-    return []
+    ws = wb["Ofertas x semana (JUNIO)"]
+
+    # Locate the torre number from the header text (e.g. "TORRE 3 -
+    # ARAUCARIA - ORIENTE") in the first few rows.
+    torre = 0
+    for row in ws.iter_rows(min_row=1, max_row=5):
+        for cell in row:
+            if isinstance(cell.value, str) and "TORRE" in cell.value.upper():
+                match = re.search(r"TORRE\s*(\d+)", cell.value.upper())
+                if match:
+                    torre = int(match.group(1))
+                    break
+        if torre:
+            break
+
+    result = []
+    max_row = ws.max_row
+    max_col = ws.max_column
+    for row in range(1, max_row + 1):
+        piso = _cell(ws, row, 2)
+        if not isinstance(piso, (int, float)) or isinstance(piso, bool):
+            continue
+        col = 3
+        while col + 1 <= max_col:
+            depto = _cell(ws, row, col)
+            estado_raw = _cell(ws, row, col + 1)
+            if depto is not None:
+                result.append(
+                    {
+                        "torre": torre,
+                        "piso": int(piso),
+                        "depto": depto,
+                        "estado": _map_estado(estado_raw),
+                    }
+                )
+            col += 2
+    return result
