@@ -9,6 +9,10 @@ export function useDashboard() {
   const [periodosLoaded, setPeriodosLoaded] = useState(false);
   const [sel, setSelState] = useState({ periodo: undefined, uploadId: undefined });
   const selInitialized = useRef(false);
+  // Lista de torres del snapshot, SIN aplicar el filtro de torre — si se
+  // derivara de `data` (que sí viene filtrado), elegir una torre haría
+  // desaparecer las demás opciones del selector.
+  const [torresDisponibles, setTorresDisponibles] = useState([]);
 
   const loadPeriodos = useCallback(async () => {
     let p = [];
@@ -57,6 +61,17 @@ export function useDashboard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sel, filters, periodosLoaded]);
 
+  useEffect(() => {
+    // Refetch SOLO al cambiar de snapshot (no al cambiar filters.torre), sin
+    // el parámetro torre, para tener siempre la lista completa de torres.
+    if (!periodosLoaded) return;
+    const params = sel.uploadId ? { upload_id: sel.uploadId } : {};
+    getDashboard(params)
+      .then((d) => setTorresDisponibles([...new Set((d.ventas || []).map((v) => v.torre))]))
+      .catch(() => setTorresDisponibles([]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sel.uploadId, periodosLoaded]);
+
   const refreshAfterUpload = useCallback(
     async (newUploadId) => {
       const fresh = await loadPeriodos();
@@ -72,5 +87,5 @@ export function useDashboard() {
     [loadPeriodos, setSel]
   );
 
-  return { data, loading, periodos, sel, setSel, filters, setFilters, reload, refreshAfterUpload };
+  return { data, loading, periodos, sel, setSel, filters, setFilters, reload, refreshAfterUpload, torresDisponibles };
 }

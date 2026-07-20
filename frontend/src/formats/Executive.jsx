@@ -12,10 +12,9 @@ import CanalChart from "../charts/CanalChart";
 
 export default function Executive() {
   const { auth } = useAuth();
-  const { data, loading, periodos, sel, setSel, filters, setFilters, refreshAfterUpload } = useDashboard();
+  const { data, loading, periodos, sel, setSel, filters, setFilters, refreshAfterUpload, torresDisponibles } = useDashboard();
   if (loading || !data) return <div className="p-8 text-slate-400">Cargando...</div>;
   if (data.empty) return <div className="p-8 text-slate-400">Sin datos. Suba un archivo.</div>;
-  const torres = [...new Set((data.ventas || []).map((v) => v.torre))];
   const fmt = (n) => new Intl.NumberFormat("es-CL").format(Math.round(n || 0));
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900 p-6 space-y-6">
@@ -27,7 +26,7 @@ export default function Executive() {
         </div>
         <div className="flex gap-3 items-center flex-wrap">
           <PeriodSelector periodos={periodos} sel={sel} setSel={setSel} />
-          <FilterBar filters={filters} setFilters={setFilters} torres={torres} />
+          <FilterBar filters={filters} setFilters={setFilters} torres={torresDisponibles} />
           {auth.rol === "admin" && <Uploader onDone={(resp) => refreshAfterUpload(resp.upload_id)} />}
         </div>
       </header>
