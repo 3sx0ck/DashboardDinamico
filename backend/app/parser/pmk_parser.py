@@ -190,15 +190,52 @@ def _parse_stock(wb) -> dict[str, Any]:
     return {"porTorre": result}
 
 
+def _mes_actual(wb) -> str | None:
+    """Nombre del mes en curso, derivado de AVANCE ESC. B2."""
+    import re
+    ws = wb["AVANCE ESC."]
+    txt = str(_cell(ws, 2, 2) or "")
+    m = re.search(r"de\s+([A-Za-zñÑáéíóúÁÉÍÓÚ]+)\s+\d{4}", txt)
+    return m.group(1).capitalize() if m else None
+
+
+def _find_mes_row(ws, col: int, mes: str, r0: int = 13, r1: int = 25) -> int | None:
+    mes_l = mes.strip().lower()
+    for r in range(r0, r1 + 1):
+        v = ws.cell(r, col).value
+        if isinstance(v, str) and v.strip().lower() == mes_l:
+            return r
+    return None
+
+
 def _parse_funnel(wb) -> dict[str, Any]:
+    """Funnel del MES en curso (Capital + Brokers), no el acumulado anual.
+
+    GESTIÓN: bloque Capital con meses en col B(2) y funnel Ofertas/Desistidos/
+    EnCurso/Promesas/Escrituras en C-G(3-7); bloque Brokers con meses en col L(12)
+    y funnel en M-Q(13-17). Los bloques están desfasados, por eso se busca por
+    etiqueta de mes en cada uno. Suma ambos canales.
+    """
     ws = wb["GESTIÓN JUNIO"]
-    # Row 12 = ACUMULADO totals row (Capital Inteligente), cols C..G
+    mes = _mes_actual(wb)
+
+    def bloque(label_col: int, val_start: int) -> list[int]:
+        if not mes:
+            return [0, 0, 0, 0, 0]
+        r = _find_mes_row(ws, label_col, mes)
+        if not r:
+            return [0, 0, 0, 0, 0]
+        return [int(_num(ws.cell(r, val_start + i).value)) for i in range(5)]
+
+    cap = bloque(2, 3)    # Capital Inteligente
+    brk = bloque(12, 13)  # Brokers
+    tot = [cap[i] + brk[i] for i in range(5)]
     return {
-        "ofertas": _num(_cell(ws, 12, 3)),
-        "desistidos": _num(_cell(ws, 12, 4)),
-        "enCurso": _num(_cell(ws, 12, 5)),
-        "promesas": _num(_cell(ws, 12, 6)),
-        "escrituras": _num(_cell(ws, 12, 7)),
+        "ofertas": tot[0],
+        "desistidos": tot[1],
+        "enCurso": tot[2],
+        "promesas": tot[3],
+        "escrituras": tot[4],
     }
 
 
