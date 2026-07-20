@@ -76,7 +76,15 @@ def _parse_stock(wb) -> dict[str, Any]:
 
 
 def _parse_funnel(wb) -> dict[str, Any]:
-    return {}
+    ws = wb["GESTIÓN JUNIO"]
+    # Row 12 = ACUMULADO totals row (Capital Inteligente), cols C..G
+    return {
+        "ofertas": _num(_cell(ws, 12, 3)),
+        "desistidos": _num(_cell(ws, 12, 4)),
+        "enCurso": _num(_cell(ws, 12, 5)),
+        "promesas": _num(_cell(ws, 12, 6)),
+        "escrituras": _num(_cell(ws, 12, 7)),
+    }
 
 
 def _parse_evolucion(wb) -> list[dict[str, Any]]:
@@ -84,7 +92,21 @@ def _parse_evolucion(wb) -> list[dict[str, Any]]:
 
 
 def _parse_canal(wb) -> list[dict[str, Any]]:
-    return []
+    ws = wb["GESTIÓN JUNIO"]
+    # Rows 5-8: Reservas/Promesas/Escrituras/Desistidos, "Mes" column
+    # Capital Inteligente = col D (4), Brokers = col N (14)
+    row_labels = {5: "reservas", 6: "promesas", 7: "escrituras", 8: "desistidos"}
+    canales = [
+        {"nombre": "Capital Inteligente", "col": 4},
+        {"nombre": "Brokers", "col": 14},
+    ]
+    result = []
+    for canal in canales:
+        entry: dict[str, Any] = {"canal": canal["nombre"]}
+        for row, key in row_labels.items():
+            entry[key] = _num(_cell(ws, row, canal["col"]))
+        result.append(entry)
+    return result
 
 
 def _parse_marketing(wb) -> dict[str, Any]:
