@@ -72,13 +72,32 @@ Python/pandas da resultados mucho más confiables para el mapeo dedicado. SheetJ
 permanece para lectura/preview cliente. Si se prefiere SheetJS puro (sin
 backend), es un cambio de alcance a decidir.
 
-## 3b. Auth (simple, interno)
+## 3b. Auth y roles
 
 Login por usuario/contraseña contra tabla `users` en PostgreSQL. Contraseñas
 **hasheadas** (bcrypt/argon2, nunca texto plano). Sesión vía JWT (cookie
-httpOnly) o token. Alcance mínimo por ahora: sin roles/permisos finos, sin
-registro público (usuarios creados por seed/admin). Endpoints del dashboard
-protegidos (requieren sesión válida).
+httpOnly) o token. Endpoints protegidos (requieren sesión válida).
+
+**Dos roles:**
+
+| Acción | admin | visitante |
+|--------|:-----:|:---------:|
+| Ver dashboard + filtros | ✓ | ✓ |
+| Subir xlsx (crear periodo) | ✓ | ✗ |
+| Crear/listar/eliminar usuarios | ✓ | ✗ |
+
+- **admin:** gestiona usuarios (los crea para que puedan ingresar), sube
+  archivos, ve dashboards.
+- **visitante:** solo ve dashboards y usa filtros.
+
+Sin registro público: los usuarios los crea un admin. Un admin inicial se crea
+por `seed.py`. Endpoints admin protegidos por chequeo de rol en backend (no solo
+UI). Frontend oculta acciones no permitidas según rol.
+
+Endpoints de gestión de usuarios (admin):
+- `POST /api/users` — crear usuario (email, nombre, password, rol)
+- `GET /api/users` — listar
+- `DELETE /api/users/{id}` — eliminar (no puede eliminarse a sí mismo / último admin)
 
 ## 3c. Persistencia
 
@@ -121,7 +140,7 @@ protegidos (requieren sesión válida).
 El parser produce el JSON de §4; el backend lo materializa en tablas relacionales.
 Todas las tablas de dominio llevan `upload_id` (FK) y `periodo` para filtrar.
 
-- `users` (id, email, password_hash, nombre, created_at)
+- `users` (id, email, password_hash, nombre, rol `admin|visitante`, created_at)
 - `uploads` (id, periodo, filename, bucket_key, uploaded_by → users.id, created_at)
 - `ventas` (id, upload_id, periodo, torre, venta_uf, x_recibir_uf, pagado_uf, escriturados)
 - `stock` (id, upload_id, periodo, torre, tipologia, disponible, reservado, promesado, escriturado, bloqueado)
@@ -185,8 +204,10 @@ DashboardDinamico/
     models.py          # tablas (users, uploads, dominio)
     persist.py         # JSON normalizado -> filas DB
     routers/
-      uploads.py       # POST /api/uploads
-      dashboard.py     # GET /api/dashboard (filtros)
+      auth.py          # POST /api/auth/login
+      users.py         # gestión usuarios (admin: crear/listar/eliminar)
+      uploads.py       # POST /api/uploads (admin)
+      dashboard.py     # GET /api/dashboard (filtros, ambos roles)
     alembic/           # migraciones
     seed.py            # usuario admin inicial
     requirements.txt
@@ -194,8 +215,9 @@ DashboardDinamico/
     index.html         # landing 3 botones (post-login)
     src/
       data/api.js      # login, upload -> backend, fetch dashboard, SheetJS preview
-      auth/            # pantalla login
-      components/      # KPIs, charts, filtros, uploader
+      auth/            # pantalla login + estado de sesión/rol
+      admin/           # panel gestión usuarios (solo admin)
+      components/      # KPIs, charts, filtros, uploader (uploader solo admin)
       formats/         # format1-executive, format2-analitico, format3-narrativo
       charts/          # wrappers Chart.js
     tailwind/vite config
@@ -211,7 +233,8 @@ mecánica) → mostrar avance corriendo en docker. Branches: `master` → `dev` 
 
 ## 12. Fuera de alcance (YAGNI)
 
-- Roles/permisos finos y registro público (auth simple: solo login + seed admin).
+- Registro público y permisos más allá de 2 roles (admin/visitante). Usuarios
+  creados por admin; admin inicial por seed.
 - Reutilizar el archivo raw del bucket tras leerlo (solo archivo/auditoría).
 - Fallback genérico para archivos arbitrarios (elegido: mapeo dedicado A).
 - Edición de datos desde el dashboard (solo lectura/visualización).
